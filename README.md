@@ -1,3 +1,30 @@
+## Submission Checklist
+
+- [ ] Deployed app URL added under "Live URL Template"
+- [ ] `TMDB_API_KEY` configured in local environment and deployment secrets
+- [ ] `movies.csv` successfully generated or app verified to build it automatically
+- [ ] Natural language search tested
+- [ ] Similar movie search tested
+- [ ] Browse and filter mode tested
+- [ ] Watchlist add/remove and watchlist-based recommendations tested
+- [ ] Screenshots or demo video captured if required by instructor
+- [ ] Evaluation examples filled in with actual observed results
+- [ ] Known limitations reviewed and ready to discuss in submission/demo
+
+## Local Run
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Set API key and run:
+
+```bash
+streamlit run app.py
+```
+
 # CineMatch
 
 CineMatch is a movie recommendation application built with Python, TMDB data, NLP, and Streamlit. It combines content-based relevance, sentiment-aware matching, and hybrid scoring to help users discover films through natural language prompts, similarity search, and advanced filters.
@@ -126,16 +153,4 @@ Use this section to document final test evidence before submission.
 - Add user accounts for persistent preferences across sessions
 - Add multilingual query understanding and translation layer
 
-## Local Run
 
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Set API key and run:
-
-```bash
-streamlit run app.py
-```

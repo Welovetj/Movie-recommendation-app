@@ -6,6 +6,9 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BASE_URL = "https://api.themoviedb.org/3"
 CACHE_DIR = Path("cache")

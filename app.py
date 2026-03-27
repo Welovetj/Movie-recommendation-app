@@ -3,15 +3,19 @@ from collections import Counter
 
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
 from recommender import ContentRecommender, HybridRecommender, NaturalLanguageParser, Watchlist
 from tmdb_pipeline import build_dataset, filter_movies, load_dataset, save_dataset, search_movies
 
 
+load_dotenv()
+
+
 # SECTION 1 - PAGE CONFIG
 st.set_page_config(page_title="CineMatch", page_icon="🎬", layout="wide")
 
-# Visual design setup requested in prompt instructions.
+# App-wide visual styling.
 st.markdown(
     """
     <style>
@@ -63,6 +67,7 @@ st.markdown(
 
 
 # SECTION 2 - SESSION STATE
+# Keep shared app objects in session state across reruns.
 if "watchlist" not in st.session_state:
     st.session_state.watchlist = Watchlist()
 if "df" not in st.session_state:
@@ -77,8 +82,6 @@ if "search_candidates" not in st.session_state:
     st.session_state.search_candidates = []
 if "similarity_explanations" not in st.session_state:
     st.session_state.similarity_explanations = {}
-if "selected_seed_id" not in st.session_state:
-    st.session_state.selected_seed_id = None
 
 
 # SECTION 3 - DATA LOADING
@@ -199,9 +202,14 @@ def get_active_filters():
     if director_name.strip():
         active["director"] = director_name.strip()
 
-    # FEATURE 1 support key (not passed to tmdb_pipeline.filter_movies directly).
+    # Keep genre logic separate from the base pipeline filter signature.
     active["genre_logic"] = genre_logic
     return active
+
+
+def has_user_filters(active_filters):
+    """Return True when the user has applied any actual data filter."""
+    return any(key != "genre_logic" for key in active_filters)
 
 
 def apply_all_filters(df, active_filters):
@@ -383,7 +391,7 @@ with st.sidebar:
     cast_member = st.text_input("Actor Name")
     director_name = st.text_input("Director Name")
 
-    # FEATURE 2 control for result ordering.
+    # User-controlled ranking preference for the current result set.
     sort_mode = st.selectbox(
         "Sort Results By",
         ["Best Match", "Highest Rated", "Most Popular", "Newest", "Most Votes"],
@@ -395,7 +403,7 @@ with st.sidebar:
         st.session_state.page = "watchlist"
         st.rerun()
 
-    # FEATURE 8: Surprise me button for serendipitous discovery.
+    # Quick discovery action for users who want a random pick.
     if st.button("Surprise Me") and st.session_state.df is not None:
         random_pick = st.session_state.df.sample(1).reset_index(drop=True)
         st.session_state.results = random_pick
@@ -418,26 +426,29 @@ if st.session_state.page == "search":
         )
 
         if st.button("Find Movies", key="nl_find") and st.session_state.recommender is not None:
-            parser = NaturalLanguageParser()
-            parsed = parser.parse(query)
+            if not query.strip():
+                st.warning("Enter a description of what you want before running natural language search.")
+            else:
+                parser = NaturalLanguageParser()
+                parsed = parser.parse(query)
 
-            merged_filters = dict(active_filters)
-            merged_filters.update(parsed)
+                merged_filters = dict(active_filters)
+                merged_filters.update(parsed)
 
-            # Remove UI-only key not accepted by recommender filter path.
-            recommender_filters = dict(merged_filters)
-            recommender_filters.pop("genre_logic", None)
+                # Remove UI-only keys before passing filters into the recommender.
+                recommender_filters = dict(merged_filters)
+                recommender_filters.pop("genre_logic", None)
 
-            results = st.session_state.recommender.recommend(
-                query_text=query,
-                filters=recommender_filters,
-                top_n=60,
-            )
-            # Apply extended genre logic on top of model output.
-            results = apply_genre_logic(results, merged_filters.get("genres"), merged_filters.get("genre_logic", "All selected"))
-            results = sort_results(results, sort_mode).head(30).reset_index(drop=True)
-            st.session_state.results = results
-            st.session_state.similarity_explanations = {}
+                results = st.session_state.recommender.recommend(
+                    query_text=query,
+                    filters=recommender_filters,
+                    top_n=60,
+                )
+                # Apply extended genre logic on top of model output.
+                results = apply_genre_logic(results, merged_filters.get("genres"), merged_filters.get("genre_logic", "All selected"))
+                results = sort_results(results, sort_mode).head(30).reset_index(drop=True)
+                st.session_state.results = results
+                st.session_state.similarity_explanations = {}
 
     elif search_mode == "🎬 Find Similar Movie":
         title_query = st.text_input("Enter a movie title")
@@ -458,8 +469,6 @@ if st.session_state.page == "search":
             selected_id = option_map.get(selected_label)
 
             if st.button("Find Similar", key="sim_find") and selected_id is not None:
-                st.session_state.selected_seed_id = selected_id
-
                 recommender_filters = dict(active_filters)
                 recommender_filters.pop("genre_logic", None)
 
@@ -472,7 +481,7 @@ if st.session_state.page == "search":
                 results = apply_genre_logic(results, active_filters.get("genres"), active_filters.get("genre_logic", "All selected"))
                 results = sort_results(results, sort_mode).head(30).reset_index(drop=True)
 
-                # Similarity explanations for transparency.
+                # Store per-result explanations so the result cards can show them.
                 explanations = {}
                 base_content = st.session_state.recommender.content
                 if isinstance(base_content, ContentRecommender) and "movie_id" in results.columns:
@@ -494,7 +503,7 @@ if st.session_state.page == "search":
             st.session_state.results = filtered
             st.session_state.similarity_explanations = {}
 
-    # FEATURE 7 panel always visible for discovery.
+    # Keep trending titles visible even before a search is run.
     render_trending_panel(st.session_state.df)
 
     # BONUS FEATURE: Comparative analysis between two movies.
@@ -534,8 +543,8 @@ if st.session_state.page == "search":
         display_results(st.session_state.results)
     else:
         st.warning("No results yet. Try searching or adjusting filters.")
-        # SECTION 9 - friendly guidance when no filters/results.
-        if len(active_filters) <= 1:  # includes genre_logic default key
+        # Friendly guidance when the page has no active results yet.
+        if not has_user_filters(active_filters):
             st.info("Tip: Try genre, year, mood words, or actor/director filters to narrow the recommendations.")
 
 
@@ -575,7 +584,7 @@ if st.session_state.page == "watchlist":
                 st.session_state.page = "search"
                 st.rerun()
 
-        # FEATURE 6 extension: export watchlist for user portability.
+        # Let users export saved titles outside the app.
         watchlist_df = pd.DataFrame(watchlist_items)
         st.download_button(
             "Download Watchlist CSV",
@@ -586,6 +595,6 @@ if st.session_state.page == "watchlist":
         )
 
 
-# SECTION 9 - global API key message requested by prompt.
+# Global API key warning shown regardless of active page.
 if not os.getenv("TMDB_API_KEY"):
     st.error("TMDB_API_KEY is missing. Add it to your environment before using API-powered features.")
